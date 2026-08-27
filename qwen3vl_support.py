@@ -1,24 +1,55 @@
 import json
 import label_classes
+import re
 
 def parse_model_response(response_text, img_w, img_h, classes_list, verbose=False):
     """
     Parses the JSON string response from Qwen3-VL and extracts the details.
     """
+
+    #
+    # Here are some examples of observed output that this parser does not yet handle:
+    #
+    #[
+    #  {"person walking, running, or standing": "[764, 918, 835, 997]"}
+    #] 
+    #(Currently this gets rejected)
+    #
+    #[
+    #  {"bbox_2d": [634, 80, 671, 252], "label": "person standing"}
+    #]
+    #(Currently this gets rejected)
+    #
+    
+    cleaned_text = ""
     try:
-        # If the response has leading/trailing markdown code blocks (```json ... ```), clean them up
-        cleaned_text = response_text.strip()
-        if cleaned_text.startswith("```"):
-            # Remove the opening fence line and closing fence line
-            lines = cleaned_text.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines[-1].startswith("```"):
-                lines = lines[:-1]
-            cleaned_text = "\n".join(lines).strip()
+        # Regex to find content inside ```json ... ``` or just ``` ... ```
+        # It searches for the pattern across multiple lines (re.DOTALL)
+        json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response_text, re.DOTALL)
+        
+        if json_match:
+            # Extract the raw string inside the code blocks
+            cleaned_text = json_match.group(1).strip()
+        else:
+            # Fallback: Check if the text actually looks like a raw JSON array/object
+            stripped_response = response_text.strip()
+            if stripped_response.startswith(('[', '{')):
+                cleaned_text = stripped_response
+            else:
+                # No backticks and no JSON structural markers. 
+                # The model returned a pure text statement like "There is no object...".
+                if verbose:
+                    print("   [-] Pure text response received (No objects found).")
+                return []
 
         # Parse the JSON string into a Python list
         data = json.loads(cleaned_text)
+
+        # Guard clause: Check if the list is empty ([])
+        if not data or not isinstance(data, list):
+            if verbose:
+                print("   [-] No objects detected in this frame (Empty list returned).")
+            return []
         
         if verbose:
             print("Parser:")
@@ -29,9 +60,14 @@ def parse_model_response(response_text, img_w, img_h, classes_list, verbose=Fals
         # Iterate and extract the details
         for index, item in enumerate(data, start=1):
             label = item.get("label", "Unknown")
-            xmin_norm, ymin_norm, xmax_norm, ymax_norm = item.get("bbox_2d", [])
+            bbox = item.get("bbox_2d")
+            if not bbox or len(bbox) != 4:
+                continue
+            xmin_norm, ymin_norm, xmax_norm, ymax_norm = bbox
 
             item = label_classes.get_entry_from_prompt(classes_list, label)
+            if item is None:
+                continue
             code = item["code"]
             name = item["name"]
             
