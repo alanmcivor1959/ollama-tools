@@ -107,9 +107,6 @@ def main():
             bbox[2] = fts
             bboxes.append(bbox)
 
-        # TEMP
-        bbio.write("output.bbox", bboxes, img_w, img_h)
-
     cap.release()
 
     bbio.write(args.output, bboxes, img_w, img_h)
