@@ -29,7 +29,7 @@ def main():
     verbose = args.verbose
     classes_list = label_classes.read_label_classes(args.classes)
 
-    prompt = label_classes.get_prompt(classes_list)
+    prompt = q3.get_prompt(classes_list)
     if verbose:
         print("Prompt:")
         print( prompt )

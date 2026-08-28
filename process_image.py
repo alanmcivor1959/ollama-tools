@@ -35,7 +35,7 @@ def main():
         print(f"\tHeight = {img_h}")
         print("")
 
-    prompt = label_classes.get_prompt(classes_list)
+    prompt = q3.get_prompt(classes_list)
     if verbose:
         print("Prompt:")
         print( prompt )

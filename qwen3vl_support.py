@@ -98,3 +98,16 @@ def parse_model_response(response_text, img_w, img_h, classes_list, verbose=Fals
         print("Raw response was:", response_text)
         return None
 
+
+def get_prompt(classes_list):
+    """Calculates prompt from classes list"""
+    prompt_list = sorted(classes_list, key=lambda x: x["prompt_order"])
+    prompt = "Detect all objects from any of the following 3 classes: \\\n"
+    for index, item in enumerate(prompt_list, start=1):
+        cprompt = item.get("prompt")
+        prompt = f"{prompt} {index}. {cprompt} \\\n"
+    prompt += "Provide the bounding box coordinates and object labels formatted as a json array. Use the class descriptions above as labels."
+    return prompt
+
+
+    
