@@ -72,28 +72,23 @@ def main():
 
         cv2.imwrite(temp_file.name, frame)
         
-        response = client.chat(
+        response = client.generate(
             model = model,
-            messages = [
-                {
-                    'role': 'user',
-                    'content': prompt,
-                    'images': [ temp_file.name ]
-                }
-            ]
+            prompt = prompt,
+            images = [ temp_file.name ],
         )
 
         os.unlink(temp_file.name)
         
         if ( verbose ):
             print("Raw response:")
-            print(response['message']['content'])
+            print(response['response'])
             print("")
 
         fbboxes = []
 
         if ( model == "qwen3-vl:8b" ):
-            fbboxes = q3.parse_model_response(response['message']['content'], img_w, img_h, classes_list, verbose)
+            fbboxes = q3.parse_model_response(response['response'], img_w, img_h, classes_list, verbose)
 
         if ( verbose ):
             print( "BBoxes:")
