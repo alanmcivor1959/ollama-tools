@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument("--model", type=str, default="qwen3-vl:8b", help="Ollama model id")
     parser.add_argument("--server", type=str, default="127.0.0.1", help="Address of Ollama server")
 #    parser.add_argument("--batch", type=int, default=16, help="Number of frames per batch")
+    parser.add_argument("--temperature", type=float, help="Creativity of the model (0.0 to 1.0)")
     parser.add_argument("--verbose", action='store_true', help="Show raw output too")
     return parser.parse_args()
 
@@ -28,6 +29,10 @@ def main():
     model = args.model
     verbose = args.verbose
     classes_list = label_classes.read_label_classes(args.classes)
+
+    ollama_options = {}
+    if args.temperature is not None:
+        ollama_options['temperature'] = args.temperature
 
     prompt = q3.get_prompt(classes_list)
     if verbose:
@@ -76,6 +81,7 @@ def main():
             model = model,
             prompt = prompt,
             images = [ temp_file.name ],
+            options = ollama_options
         )
 
         os.unlink(temp_file.name)
