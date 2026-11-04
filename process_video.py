@@ -17,6 +17,8 @@ def parse_args():
     parser.add_argument("--server", type=str, default="127.0.0.1", help="Address of Ollama server")
 #    parser.add_argument("--batch", type=int, default=16, help="Number of frames per batch")
     parser.add_argument("--temperature", type=float, help="Creativity of the model (0.0 to 1.0)")
+    parser.add_argument("--num_ctx", type=int, default=4096, help="Context length")
+    parser.add_argument("--num_predict", type=int, default=-1, help="Maximum number of output tokens")
     parser.add_argument("--verbose", action='store_true', help="Show raw output too")
     return parser.parse_args()
 
@@ -33,6 +35,8 @@ def main():
     ollama_options = {}
     if args.temperature is not None:
         ollama_options['temperature'] = args.temperature
+    ollama_options['num_ctx'] = args.num_ctx;
+    ollama_options['num_predict'] = args.num_predict;
 
     prompt = q3.get_prompt(classes_list)
     if verbose:
