@@ -10,6 +10,26 @@ import os
 import sys
 import time
 
+def frame_range(text):
+    """Parse a frame range "START-END", "START-" or "-END" (1-based, inclusive).
+
+    Returns (start, end) where end is None if processing should run to the end of the video.
+    """
+    start_str, sep, end_str = text.partition("-")
+    if not sep:
+        raise argparse.ArgumentTypeError(f"invalid frame range '{text}', expected START-END, START- or -END")
+    try:
+        start = int(start_str) if start_str.strip() else 1
+        end = int(end_str) if end_str.strip() else None
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid frame range '{text}', frame numbers must be integers")
+    if start < 1:
+        raise argparse.ArgumentTypeError(f"invalid frame range '{text}', start frame must be at least 1")
+    if end is not None and end < start:
+        raise argparse.ArgumentTypeError(f"invalid frame range '{text}', end frame is before start frame")
+    return start, end
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Process image with Ollama")
     parser.add_argument("--video", type=str, required=True, help="Path to local video file")
@@ -21,8 +41,12 @@ def parse_args():
     parser.add_argument("--temperature", type=float, help="Creativity of the model (0.0 to 1.0)")
     parser.add_argument("--num_ctx", type=int, default=4096, help="Context length")
     parser.add_argument("--num_predict", type=int, default=-1, help="Maximum number of output tokens")
-    parser.add_argument("--restart", action='store_true',
+    start_group = parser.add_mutually_exclusive_group()
+    start_group.add_argument("--restart", action='store_true',
                         help="Resume an interrupted run: append to --output, starting after the last frame in it")
+    start_group.add_argument("--frames", type=frame_range,
+                        help="Contiguous range of frames to process (1-based, inclusive): "
+                             "START-END, START- (to end of video) or -END (from frame 1)")
     parser.add_argument("--verbose", action='store_true', help="Show raw output too")
     return parser.parse_args()
 
@@ -65,21 +89,25 @@ def main():
     img_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     out_mode = "w"
+    start_frame = 1
+    end_frame = None
+    if args.frames is not None:
+        start_frame, end_frame = args.frames
     if args.restart:
         out_mode = "a"
-        start_frame = 1
         if os.path.exists(args.output):
             existing = bbio.read(args.output, img_w, img_h)
             if existing:
                 # Continue after the last frame and bbox id already written
                 start_frame = max(b[1] for b in existing) + 1
                 bboxid = max(b[0] for b in existing)
-        # Skip frames already processed (grab() avoids decoding them)
-        for _ in range(start_frame - 1):
-            if not cap.grab():
-                print(f"Error: video has fewer than {start_frame} frames.")
-                sys.exit(1)
         print(f"Restarting at frame {start_frame}, continuing from bbox id {bboxid}")
+
+    # Skip frames before the start frame (grab() avoids decoding them)
+    for _ in range(start_frame - 1):
+        if not cap.grab():
+            print(f"Error: video has fewer than {start_frame} frames.")
+            sys.exit(1)
 
     total_duration = 0
     load_duration = 0
@@ -101,6 +129,8 @@ def main():
                 break
 
             fno = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+            if end_frame is not None and fno > end_frame:
+                break
             num_frames += 1
             fts = 0.0               # stub
 
