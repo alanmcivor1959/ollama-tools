@@ -20,6 +20,8 @@ def parse_args():
     parser.add_argument("--temperature", type=float, help="Creativity of the model (0.0 to 1.0)")
     parser.add_argument("--num_ctx", type=int, default=4096, help="Context length")
     parser.add_argument("--num_predict", type=int, default=-1, help="Maximum number of output tokens")
+    parser.add_argument("--restart", action='store_true',
+                        help="Resume an interrupted run: append to --output, starting after the last frame in it")
     parser.add_argument("--verbose", action='store_true', help="Show raw output too")
     return parser.parse_args()
 
@@ -61,6 +63,23 @@ def main():
     img_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     img_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+    out_mode = "w"
+    if args.restart:
+        out_mode = "a"
+        start_frame = 1
+        if os.path.exists(args.output):
+            existing = bbio.read(args.output, img_w, img_h)
+            if existing:
+                # Continue after the last frame and bbox id already written
+                start_frame = max(b[1] for b in existing) + 1
+                bboxid = max(b[0] for b in existing)
+        # Skip frames already processed (grab() avoids decoding them)
+        for _ in range(start_frame - 1):
+            if not cap.grab():
+                print(f"Error: video has fewer than {start_frame} frames.")
+                sys.exit(1)
+        print(f"Restarting at frame {start_frame}, continuing from bbox id {bboxid}")
+
     total_duration = 0
     load_duration = 0
     prompt_eval_count = 0
@@ -69,8 +88,9 @@ def main():
     eval_duration = 0
 
     num_unparsed = 0
+    num_frames = 0
 
-    with open(args.output, "w", encoding="utf-8") as out_f:
+    with open(args.output, out_mode, encoding="utf-8") as out_f:
         while cap.isOpened():
             ret, frame = cap.read()
 
@@ -78,6 +98,7 @@ def main():
                 break
 
             fno = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+            num_frames += 1
             fts = 0.0               # stub
 
             if verbose:
@@ -140,12 +161,16 @@ def main():
 
     cap.release()
 
-    total_duration /= fno
-    load_duration /= fno
-    prompt_eval_count /= fno
-    prompt_eval_duration /= fno
-    eval_count /= fno
-    eval_duration /= fno
+    if num_frames == 0:
+        print("No frames processed.")
+        return
+
+    total_duration /= num_frames
+    load_duration /= num_frames
+    prompt_eval_count /= num_frames
+    prompt_eval_duration /= num_frames
+    eval_count /= num_frames
+    eval_duration /= num_frames
     print(f"Ave(total_duration):       {total_duration*1e-9}")
     print(f"Ave(load_duration):        {load_duration*1e-9}")
     print(f"Ave(prompt_eval_count):    {prompt_eval_count}")
@@ -153,7 +178,7 @@ def main():
     print(f"Ave(eval_count):           {eval_count}")
     print(f"Ave(eval_duration):        {eval_duration*1e-9}")
 
-    print(f"Number frame responses unparsed: {num_unparsed} ({100*num_unparsed/fno}%)")
+    print(f"Number frame responses unparsed: {num_unparsed} ({100*num_unparsed/num_frames}%)")
 
 if __name__ == "__main__":
     main()
