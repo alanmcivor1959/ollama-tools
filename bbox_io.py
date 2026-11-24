@@ -4,22 +4,39 @@ def normalise_bbox(box, img_w, img_h):
     return [xmin / img_w, xmax / img_w, ymin / img_h, ymax / img_h]
 
 
+def format_bbox(bbox, img_w, img_h):
+    """Return one bbox record as a line in std format (including trailing newline).
+
+    bbox is [bboxid, fno, ts, box, class_id] with box = [xmin, ymin, xmax, ymax] in pixels.
+
+    Use this to write a bbox file one record at a time:
+
+        with open(fname, "w", encoding="utf-8") as f:
+            for rec in records:
+                f.write(format_bbox(rec, img_w, img_h))
+    """
+    bboxid, fno, ts, box, class_id = bbox
+    nbox = normalise_bbox(box, img_w, img_h)
+    tv_sec = int(ts)
+    tv_usec = round((ts - tv_sec) * 1_000_000)
+    if tv_usec >= 1_000_000:
+        tv_sec += 1
+        tv_usec -= 1_000_000
+    ts_str = f"{tv_sec:10d}.{tv_usec:06d}"
+    return f"{bboxid} {fno} {ts_str} " + " ".join(map(str, nbox)) + f" {class_id}\n"
+
+
 def write(fname, bboxes, img_w, img_h):
     """Write bboxes in std format to fname"""
     with open(fname, "w", encoding="utf-8") as txt_f:
         for bbox in bboxes:
-            bboxid, fno, ts, box, class_id = bbox
-            nbox = normalise_bbox(box, img_w, img_h)
-            tv_sec = int(ts)
-            tv_usec = round((ts - tv_sec) * 1_000_000)
-            ts_str = f"{tv_sec:10d}.{tv_usec:06d}"
-            txt_f.write(f"{bboxid} {fno} {ts_str} " + " ".join(map(str, nbox)) + f" {class_id}" + "\n")
+            txt_f.write(format_bbox(bbox, img_w, img_h))
 
 
 def read(fname, img_w, img_h):
     """Read bboxes from fname and return as array"""
     bboxes = []
-    with open("input.txt", "r") as infile:
+    with open(fname, "r", encoding="utf-8") as infile:
         for line in infile:
             fields = line.split()
             if not fields:
