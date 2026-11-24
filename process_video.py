@@ -68,6 +68,8 @@ def main():
     eval_count = 0
     eval_duration = 0
 
+    num_unparsed = 0
+
     while cap.isOpened():
         ret, frame = cap.read()
 
@@ -113,18 +115,15 @@ def main():
         eval_count += response['eval_count']
         eval_duration += response['eval_duration']
 
-
-        print()
-        print(response['prompt_eval_count'])
-        print(response['prompt_eval_duration'])
-        print(response['eval_count'])
-        print(response['eval_duration'])
-
         fbboxes = []
 
         if ( model == "qwen3-vl:8b" ):
             fbboxes = q3.parse_model_response(response['response'], img_w, img_h, classes_list, verbose)
 
+        if fbboxes is None:
+            num_unparsed += 1;
+            continue
+            
         if ( verbose ):
             print( "BBoxes:")
             print( fbboxes )
@@ -136,9 +135,6 @@ def main():
             bbox[1] = fno
             bbox[2] = fts
             bboxes.append(bbox)
-
-        if fno == 2:
-            break
 
     cap.release()
 
@@ -156,6 +152,8 @@ def main():
     print(f"Ave(prompt_eval_duration): {prompt_eval_duration*1e-9}")
     print(f"Ave(eval_count):           {eval_count}")
     print(f"Ave(eval_duration):        {eval_duration*1e-9}")
+
+    print(f"Number frame responses unparsed: {num_unparsed} ({100*num_unparsed/fno}%)")
 
 if __name__ == "__main__":
     main()

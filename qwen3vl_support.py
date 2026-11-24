@@ -59,7 +59,9 @@ def parse_model_response(response_text, img_w, img_h, classes_list, verbose=Fals
 
         # Iterate and extract the details
         for index, item in enumerate(data, start=1):
-            label = item.get("label", "Unknown")
+            label = item.get("label")
+            if not label:
+                continue
             bbox = item.get("bbox_2d")
             if not bbox or len(bbox) != 4:
                 continue
@@ -91,6 +93,11 @@ def parse_model_response(response_text, img_w, img_h, classes_list, verbose=Fals
         if verbose:
             print("")
             
+        if len(bboxes) != len(data):
+            if verbose:
+                print(f"Only {len(bboxes)} bboxes extracted from {len(data)} items")
+            return None
+
         return bboxes
 
     except json.JSONDecodeError as e:
