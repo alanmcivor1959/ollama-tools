@@ -61,6 +61,13 @@ def main():
     img_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     img_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+    total_duration = 0
+    load_duration = 0
+    prompt_eval_count = 0
+    prompt_eval_duration = 0
+    eval_count = 0
+    eval_duration = 0
+
     while cap.isOpened():
         ret, frame = cap.read()
 
@@ -95,6 +102,24 @@ def main():
             print(response['response'])
             print("")
 
+        if ( response['done'] != True ) or ( response['done_reason'] != "stop" ):
+            print(f"Incorrect stop criteria {response['done']} {response['done_reason']}")
+            sys.exit(1)
+
+        total_duration += response['total_duration']
+        load_duration += response['load_duration']
+        prompt_eval_count += response['prompt_eval_count']
+        prompt_eval_duration += response['prompt_eval_duration']
+        eval_count += response['eval_count']
+        eval_duration += response['eval_duration']
+
+
+        print()
+        print(response['prompt_eval_count'])
+        print(response['prompt_eval_duration'])
+        print(response['eval_count'])
+        print(response['eval_duration'])
+
         fbboxes = []
 
         if ( model == "qwen3-vl:8b" ):
@@ -112,10 +137,25 @@ def main():
             bbox[2] = fts
             bboxes.append(bbox)
 
+        if fno == 2:
+            break
+
     cap.release()
 
     bbio.write(args.output, bboxes, img_w, img_h)
 
+    total_duration /= fno
+    load_duration /= fno
+    prompt_eval_count /= fno
+    prompt_eval_duration /= fno
+    eval_count /= fno
+    eval_duration /= fno
+    print(f"Ave(total_duration):       {total_duration*1e-9}")
+    print(f"Ave(load_duration):        {load_duration*1e-9}")
+    print(f"Ave(prompt_eval_count):    {prompt_eval_count}")
+    print(f"Ave(prompt_eval_duration): {prompt_eval_duration*1e-9}")
+    print(f"Ave(eval_count):           {eval_count}")
+    print(f"Ave(eval_duration):        {eval_duration*1e-9}")
 
 if __name__ == "__main__":
     main()
