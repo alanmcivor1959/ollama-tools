@@ -8,6 +8,7 @@ import tempfile
 import cv2
 import os
 import sys
+import time
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Process image with Ollama")
@@ -90,6 +91,8 @@ def main():
     num_unparsed = 0
     num_frames = 0
 
+    start_time = time.perf_counter()
+
     with open(args.output, out_mode, encoding="utf-8") as out_f:
         while cap.isOpened():
             ret, frame = cap.read()
@@ -161,6 +164,8 @@ def main():
 
     cap.release()
 
+    elapsed = time.perf_counter() - start_time
+
     if num_frames == 0:
         print("No frames processed.")
         return
@@ -177,6 +182,9 @@ def main():
     print(f"Ave(prompt_eval_duration): {prompt_eval_duration*1e-9}")
     print(f"Ave(eval_count):           {eval_count}")
     print(f"Ave(eval_duration):        {eval_duration*1e-9}")
+
+    print(f"Total elapsed time:        {elapsed:.3f} s")
+    print(f"Elapsed time per frame:    {elapsed/num_frames:.3f} s")
 
     print(f"Number frame responses unparsed: {num_unparsed} ({100*num_unparsed/num_frames}%)")
 
