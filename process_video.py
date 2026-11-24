@@ -7,6 +7,7 @@ from PIL import Image
 import tempfile
 import cv2
 import os
+import sys
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Process image with Ollama")
@@ -46,7 +47,6 @@ def main():
 
 #    batch_size = args.batch
 
-    bboxes = []
     bboxid = 0
 
 #    frame_no = []
@@ -70,75 +70,75 @@ def main():
 
     num_unparsed = 0
 
-    while cap.isOpened():
-        ret, frame = cap.read()
+    with open(args.output, "w", encoding="utf-8") as out_f:
+        while cap.isOpened():
+            ret, frame = cap.read()
 
-        if not ret:
-            break
+            if not ret:
+                break
 
-        fno = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-        fts = 0.0               # stub
+            fno = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+            fts = 0.0               # stub
 
-        if verbose:
-            print("")
-            print("")
-            print(f"Processing frame {fno}")
-            print("")
+            if verbose:
+                print("")
+                print("")
+                print(f"Processing frame {fno}")
+                print("")
 
-        temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        temp_file.close()
+            temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            temp_file.close()
 
-        cv2.imwrite(temp_file.name, frame)
+            cv2.imwrite(temp_file.name, frame)
         
-        response = client.generate(
-            model = model,
-            prompt = prompt,
-            images = [ temp_file.name ],
-            options = ollama_options
-        )
+            response = client.generate(
+                model = model,
+                prompt = prompt,
+                images = [ temp_file.name ],
+                options = ollama_options
+            )
 
-        os.unlink(temp_file.name)
+            os.unlink(temp_file.name)
         
-        if ( verbose ):
-            print("Raw response:")
-            print(response['response'])
-            print("")
+            if ( verbose ):
+                print("Raw response:")
+                print(response['response'])
+                print("")
 
-        if ( response['done'] != True ) or ( response['done_reason'] != "stop" ):
-            print(f"Incorrect stop criteria {response['done']} {response['done_reason']}")
-            sys.exit(1)
+            if ( response['done'] != True ) or ( response['done_reason'] != "stop" ):
+                print(f"Incorrect stop criteria {response['done']} {response['done_reason']}")
+                sys.exit(1)
 
-        total_duration += response['total_duration']
-        load_duration += response['load_duration']
-        prompt_eval_count += response['prompt_eval_count']
-        prompt_eval_duration += response['prompt_eval_duration']
-        eval_count += response['eval_count']
-        eval_duration += response['eval_duration']
+            total_duration += response['total_duration']
+            load_duration += response['load_duration']
+            prompt_eval_count += response['prompt_eval_count']
+            prompt_eval_duration += response['prompt_eval_duration']
+            eval_count += response['eval_count']
+            eval_duration += response['eval_duration']
 
-        fbboxes = []
+            fbboxes = []
 
-        if ( model == "qwen3-vl:8b" ):
-            fbboxes = q3.parse_model_response(response['response'], img_w, img_h, classes_list, verbose)
+            if ( model == "qwen3-vl:8b" ):
+                fbboxes = q3.parse_model_response(response['response'], img_w, img_h, classes_list, verbose)
 
-        if fbboxes is None:
-            num_unparsed += 1;
-            continue
+            if fbboxes is None:
+                num_unparsed += 1;
+                continue
             
-        if ( verbose ):
-            print( "BBoxes:")
-            print( fbboxes )
-            print("")
+            if ( verbose ):
+                print( "BBoxes:")
+                print( fbboxes )
+                print("")
 
-        for bbox in fbboxes:
-            bboxid += 1
-            bbox[0] = bboxid
-            bbox[1] = fno
-            bbox[2] = fts
-            bboxes.append(bbox)
+            for bbox in fbboxes:
+                bboxid += 1
+                bbox[0] = bboxid
+                bbox[1] = fno
+                bbox[2] = fts
+                out_f.write(bbio.format_bbox(bbox, img_w, img_h))
+            out_f.flush()
 
     cap.release()
-
-    bbio.write(args.output, bboxes, img_w, img_h)
 
     total_duration /= fno
     load_duration /= fno
