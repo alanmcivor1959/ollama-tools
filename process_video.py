@@ -40,6 +40,8 @@ def parse_args():
 #    parser.add_argument("--batch", type=int, default=16, help="Number of frames per batch")
     parser.add_argument("--temperature", type=float, help="Creativity of the model (0.0 to 1.0)")
     parser.add_argument("--seed", type=int, help="Random seed, for repeatable output (default: random)")
+    parser.add_argument("--top_p", type=float, help="Nucleus sampling: sample from tokens within this cumulative probability (0.0 to 1.0)")
+    parser.add_argument("--top_k", type=int, help="Sample only from the top_k most likely tokens")
     parser.add_argument("--num_ctx", type=int, default=4096, help="Context length")
     parser.add_argument("--num_predict", type=int, default=-1, help="Maximum number of output tokens")
     start_group = parser.add_mutually_exclusive_group()
@@ -66,6 +68,10 @@ def main():
         ollama_options['temperature'] = args.temperature
     if args.seed is not None:
         ollama_options['seed'] = args.seed
+    if args.top_p is not None:
+        ollama_options['top_p'] = args.top_p
+    if args.top_k is not None:
+        ollama_options['top_k'] = args.top_k
     ollama_options['num_ctx'] = args.num_ctx;
     ollama_options['num_predict'] = args.num_predict;
     if verbose:

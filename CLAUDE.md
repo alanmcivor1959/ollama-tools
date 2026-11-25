@@ -16,12 +16,12 @@ python3 process_image.py --image img.png --classes label_classes.json --output o
 
 # Video, one model call per frame
 python3 process_video.py --video vid.mp4 --classes label_classes.json --output out.bbox [--server HOST] \
-    [--frames START-END | --restart] [--temperature T] [--seed N] [--num_ctx N] [--num_predict N] [--verbose]
+    [--frames START-END | --restart] [--temperature T] [--top_p P] [--top_k K] [--seed N] [--num_ctx N] [--num_predict N] [--verbose]
 ```
 
 - `--frames` takes `START-END`, `START-` or `-END` (1-based, inclusive).
 - `--restart` resumes an interrupted run: it appends to `--output`, starting after the highest frame number in it and continuing bbox ids. It cannot be combined with `--frames`.
-- Without `--temperature`/`--seed`, the model's own defaults from the server are used (deliberately).
+- Without `--temperature`/`--top_p`/`--top_k`/`--seed`, the model's own defaults from the server are used (deliberately).
 
 ## Architecture
 
