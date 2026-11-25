@@ -39,6 +39,7 @@ def parse_args():
     parser.add_argument("--server", type=str, default="127.0.0.1", help="Address of Ollama server")
 #    parser.add_argument("--batch", type=int, default=16, help="Number of frames per batch")
     parser.add_argument("--temperature", type=float, help="Creativity of the model (0.0 to 1.0)")
+    parser.add_argument("--seed", type=int, help="Random seed, for repeatable output (default: random)")
     parser.add_argument("--num_ctx", type=int, default=4096, help="Context length")
     parser.add_argument("--num_predict", type=int, default=-1, help="Maximum number of output tokens")
     start_group = parser.add_mutually_exclusive_group()
@@ -63,6 +64,8 @@ def main():
     ollama_options = {}
     if args.temperature is not None:
         ollama_options['temperature'] = args.temperature
+    if args.seed is not None:
+        ollama_options['seed'] = args.seed
     ollama_options['num_ctx'] = args.num_ctx;
     ollama_options['num_predict'] = args.num_predict;
 
