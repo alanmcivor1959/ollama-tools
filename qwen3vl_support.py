@@ -1,6 +1,8 @@
 import json
 import label_classes
 import re
+from typing import Literal
+from pydantic import Field, create_model
 
 def parse_model_response(response_text, img_w, img_h, classes_list, verbose=False):
     """
@@ -42,8 +44,11 @@ def parse_model_response(response_text, img_w, img_h, classes_list, verbose=Fals
                     print("   [-] Pure text response received (No objects found).")
                 return []
 
-        # Parse the JSON string into a Python list
+        # Parse the JSON string. With a format schema (see get_format()) the
+        # response is an object {"objects": [...]}; without one it is a raw list.
         data = json.loads(cleaned_text)
+        if isinstance(data, dict):
+            data = data.get("objects")
 
         # Guard clause: Check if the list is empty ([])
         if not data or not isinstance(data, list):
@@ -59,6 +64,8 @@ def parse_model_response(response_text, img_w, img_h, classes_list, verbose=Fals
 
         # Iterate and extract the details
         for index, item in enumerate(data, start=1):
+            if not isinstance(item, dict):
+                continue
             label = item.get("label")
             if not label:
                 continue
@@ -106,14 +113,47 @@ def parse_model_response(response_text, img_w, img_h, classes_list, verbose=Fals
         return None
 
 
+def get_class_prompts(classes_list):
+    """Returns the prompt fields of the classes list, in prompt_order"""
+    return [item["prompt"] for item in sorted(classes_list, key=lambda x: x["prompt_order"])]
+
+
+def get_format(classes_list):
+    """
+    Returns the JSON schema for Ollama's format parameter, built from the classes list.
+
+    The response must be an object {"objects": [{"label": ..., "bbox_2d": [...]}, ...]}.
+    label is restricted to the exact prompt strings of the classes, so it always matches
+    an entry via label_classes.get_entry_from_prompt().
+    """
+    prompts = get_class_prompts(classes_list)
+    # Prompts can contain commas, so quote each one in the description
+    labels = "; ".join(f'"{p}"' for p in prompts)
+    detected_object = create_model(
+        "DetectedObject",
+        label=(Literal[tuple(prompts)], Field(description=f"Object class, exactly one of: {labels}")),
+        bbox_2d=(list[int], Field(
+            description="2D bounding box [x1, y1, x2, y2] normalized from 0 to 1000",
+            min_length=4,
+            max_length=4,
+        )),
+    )
+    frame_detections = create_model("FrameDetections", objects=(list[detected_object], ...))
+    return frame_detections.model_json_schema()
+
+
 def get_prompt(classes_list):
-    """Calculates prompt from classes list"""
-    prompt_list = sorted(classes_list, key=lambda x: x["prompt_order"])
-    prompt = "Detect all objects from any of the following 3 classes: \\\n"
-    for index, item in enumerate(prompt_list, start=1):
-        cprompt = item.get("prompt")
-        prompt = f"{prompt} {index}. {cprompt} \\\n"
-    prompt += "Provide the bounding box coordinates and object labels formatted as a json array. Use the class descriptions above as labels."
+    """Calculates prompt from classes list. The requested output matches get_format()."""
+    prompts = get_class_prompts(classes_list)
+    prompt = f"Detect all objects from any of the following {len(prompts)} classes:\n"
+    for index, cprompt in enumerate(prompts, start=1):
+        prompt += f"{index}. {cprompt}\n"
+    prompt += (
+        'Respond with a JSON object with a key "objects" containing a list of the detected objects. '
+        'Each object has a "label", which must be exactly one of the class descriptions above, '
+        'and a "bbox_2d" giving the bounding box [x1, y1, x2, y2] normalized from 0 to 1000. '
+        'If no objects are detected, "objects" is an empty list.'
+    )
     return prompt
 
 

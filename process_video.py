@@ -3,12 +3,12 @@ import argparse
 import qwen3vl_support as q3
 import label_classes
 import bbox_io as bbio
-from PIL import Image
 import tempfile
 import cv2
 import os
 import sys
 import time
+
 
 def frame_range(text):
     """Parse a frame range "START-END", "START-" or "-END" (1-based, inclusive).
@@ -67,9 +67,13 @@ def main():
     ollama_options['num_predict'] = args.num_predict;
 
     prompt = q3.get_prompt(classes_list)
+    response_format = q3.get_format(classes_list)
     if verbose:
         print("Prompt:")
         print( prompt )
+        print("")
+        print("Format:")
+        print( response_format )
         print("")
 
 #    batch_size = args.batch
@@ -149,6 +153,7 @@ def main():
                 model = model,
                 prompt = prompt,
                 images = [ temp_file.name ],
+                format=response_format,
                 options = ollama_options
             )
 
