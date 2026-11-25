@@ -68,15 +68,19 @@ def main():
         ollama_options['seed'] = args.seed
     ollama_options['num_ctx'] = args.num_ctx;
     ollama_options['num_predict'] = args.num_predict;
+    if verbose:
+        print("Options:")
+        print(ollama_options)
+        print("")
 
     prompt = q3.get_prompt(classes_list)
     response_format = q3.get_format(classes_list)
     if verbose:
         print("Prompt:")
-        print( prompt )
+        print(prompt)
         print("")
         print("Format:")
-        print( response_format )
+        print(response_format)
         print("")
 
 #    batch_size = args.batch
@@ -157,18 +161,25 @@ def main():
                 prompt = prompt,
                 images = [ temp_file.name ],
                 format=response_format,
+                think=False,
                 options = ollama_options
             )
 
             os.unlink(temp_file.name)
         
+            if verbose:
+                print(f"prompt_eval_count={response['prompt_eval_count']}")
+                print(f"eval_count={response['eval_count']}")
+                print(f"sum={response['prompt_eval_count']+response['eval_count']}")
+                print("")
+
             if ( verbose ):
                 print("Raw response:")
                 print(response['response'])
                 print("")
 
             if ( response['done'] != True ) or ( response['done_reason'] != "stop" ):
-                print(f"Incorrect stop criteria {response['done']} {response['done_reason']}")
+                print(f"Incorrect stop criteria: done={response['done']} done_reason={response['done_reason']} prompt_eval_count={response['prompt_eval_count']} eval_count={response['eval_count']} sum={response['prompt_eval_count']+response['eval_count']}")
                 sys.exit(1)
 
             total_duration += response['total_duration']
