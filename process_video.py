@@ -30,6 +30,37 @@ def frame_range(text):
     return start, end
 
 
+def tail(text, n=1000):
+    """Return the last n characters of text, for printing long model output"""
+    if not text:
+        return "(empty)"
+    return text if len(text) <= n else "..." + text[-n:]
+
+
+def report_incomplete(fno, response):
+    """Print details of a response that did not finish with done_reason=stop"""
+    print(f"Frame {fno}: incorrect stop criteria: done={response['done']} done_reason={response['done_reason']} "
+          f"prompt_eval_count={response['prompt_eval_count']} eval_count={response['eval_count']} "
+          f"sum={response['prompt_eval_count']+response['eval_count']}")
+    print("Thinking (tail):")
+    print(tail(response.get('thinking')))
+    print("Response (tail):")
+    print(tail(response.get('response')))
+    print("")
+
+
+def generate_frame(client, model, prompt, image_file, response_format, options):
+    """Run the model on one frame image and return the response"""
+    return client.generate(
+        model = model,
+        prompt = prompt,
+        images = [ image_file ],
+        format = response_format,
+        think = False,
+        options = options
+    )
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Process image with Ollama")
     parser.add_argument("--video", type=str, required=True, help="Path to local video file")
@@ -42,8 +73,12 @@ def parse_args():
     parser.add_argument("--seed", type=int, help="Random seed, for repeatable output (default: random)")
     parser.add_argument("--top_p", type=float, help="Nucleus sampling: sample from tokens within this cumulative probability (0.0 to 1.0)")
     parser.add_argument("--top_k", type=int, help="Sample only from the top_k most likely tokens")
+    parser.add_argument("--presence_penalty", type=float, help="Penalise tokens already generated, to reduce repetition")
     parser.add_argument("--num_ctx", type=int, default=4096, help="Context length")
     parser.add_argument("--num_predict", type=int, default=-1, help="Maximum number of output tokens")
+    parser.add_argument("--retries", type=int, default=2,
+                        help="Times to retry a frame whose output hits the token limit (done_reason=length) "
+                             "before skipping it. With --seed S, retry n uses seed S+n")
     start_group = parser.add_mutually_exclusive_group()
     start_group.add_argument("--restart", action='store_true',
                         help="Resume an interrupted run: append to --output, starting after the last frame in it")
@@ -51,7 +86,10 @@ def parse_args():
                         help="Contiguous range of frames to process (1-based, inclusive): "
                              "START-END, START- (to end of video) or -END (from frame 1)")
     parser.add_argument("--verbose", action='store_true', help="Show raw output too")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.retries < 0:
+        parser.error("--retries must be 0 or more")
+    return args
 
 
 def main():
@@ -72,6 +110,8 @@ def main():
         ollama_options['top_p'] = args.top_p
     if args.top_k is not None:
         ollama_options['top_k'] = args.top_k
+    if args.presence_penalty is not None:
+        ollama_options['presence_penalty'] = args.presence_penalty
     ollama_options['num_ctx'] = args.num_ctx;
     ollama_options['num_predict'] = args.num_predict;
     if verbose:
@@ -135,6 +175,8 @@ def main():
 
     num_unparsed = 0
     num_frames = 0
+    num_retries = 0
+    failed_frames = []
 
     start_time = time.perf_counter()
 
@@ -161,43 +203,57 @@ def main():
             temp_file.close()
 
             cv2.imwrite(temp_file.name, frame)
-        
-            response = client.generate(
-                model = model,
-                prompt = prompt,
-                images = [ temp_file.name ],
-                format=response_format,
-                think=False,
-                options = ollama_options
-            )
 
-            os.unlink(temp_file.name)
-        
-            if verbose:
-                print(f"prompt_eval_count={response['prompt_eval_count']}")
-                print(f"eval_count={response['eval_count']}")
-                print(f"sum={response['prompt_eval_count']+response['eval_count']}")
-                print("")
+            try:
+                for attempt in range(args.retries + 1):
+                    options = dict(ollama_options)
+                    if attempt > 0:
+                        num_retries += 1
+                        if args.seed is not None:
+                            options['seed'] = args.seed + attempt
+                        seed_str = f" (seed {options['seed']})" if 'seed' in options else ""
+                        print(f"Frame {fno}: retry {attempt} of {args.retries}{seed_str}")
 
-            if ( verbose ):
-                print("Raw response:")
-                print(response['response'])
-                print("")
+                    response = generate_frame(client, model, prompt, temp_file.name, response_format, options)
 
-            if ( response['done'] != True ) or ( response['done_reason'] != "stop" ):
-                print(f"Incorrect stop criteria: done={response['done']} done_reason={response['done_reason']} prompt_eval_count={response['prompt_eval_count']} eval_count={response['eval_count']} sum={response['prompt_eval_count']+response['eval_count']}")
-                sys.exit(1)
+                    # Timing totals include every attempt, as that is the real cost
+                    total_duration += response['total_duration']
+                    load_duration += response['load_duration']
+                    prompt_eval_count += response['prompt_eval_count']
+                    prompt_eval_duration += response['prompt_eval_duration']
+                    eval_count += response['eval_count']
+                    eval_duration += response['eval_duration']
 
-            total_duration += response['total_duration']
-            load_duration += response['load_duration']
-            prompt_eval_count += response['prompt_eval_count']
-            prompt_eval_duration += response['prompt_eval_duration']
-            eval_count += response['eval_count']
-            eval_duration += response['eval_duration']
+                    if verbose:
+                        print(f"prompt_eval_count={response['prompt_eval_count']}")
+                        print(f"eval_count={response['eval_count']}")
+                        print(f"sum={response['prompt_eval_count']+response['eval_count']}")
+                        print("")
+                        print("Thinking:")
+                        print(response.get('thinking'))
+                        print("")
+                        print("Raw response:")
+                        print(response['response'])
+                        print("")
+
+                    if response['done'] and response['done_reason'] == "stop":
+                        break
+
+                    report_incomplete(fno, response)
+                    if not response['done'] or response['done_reason'] != "length":
+                        sys.exit(1)
+            finally:
+                os.unlink(temp_file.name)
+
+            if response['done_reason'] != "stop":
+                # Still hitting the token limit after all retries: skip this frame
+                print(f"Frame {fno}: skipped after {args.retries} retries")
+                failed_frames.append(fno)
+                continue
 
             fbboxes = []
 
-            if ( model == "qwen3-vl:8b" ):
+            if model.startswith("qwen3-vl"):
                 fbboxes = q3.parse_model_response(response['response'], img_w, img_h, classes_list, verbose)
 
             if fbboxes is None:
@@ -240,6 +296,11 @@ def main():
 
     print(f"Total elapsed time:        {elapsed:.3f} s")
     print(f"Elapsed time per frame:    {elapsed/num_frames:.3f} s")
+
+    print(f"Number of retries: {num_retries}")
+    print(f"Frames failed (length): {len(failed_frames)} ({100*len(failed_frames)/num_frames}%)")
+    if failed_frames:
+        print(f"Failed frames: {' '.join(map(str, failed_frames))}")
 
     print(f"Number frame responses unparsed: {num_unparsed} ({100*num_unparsed/num_frames}%)")
 

@@ -59,7 +59,7 @@ def main():
 
     bboxes = []
 
-    if ( model == "qwen3-vl:8b" ):
+    if model.startswith("qwen3-vl"):
         bboxes = q3.parse_model_response(response['message']['content'], img_w, img_h, classes_list, verbose)
 
     if ( verbose ):

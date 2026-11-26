@@ -16,12 +16,13 @@ python3 process_image.py --image img.png --classes label_classes.json --output o
 
 # Video, one model call per frame
 python3 process_video.py --video vid.mp4 --classes label_classes.json --output out.bbox [--server HOST] \
-    [--frames START-END | --restart] [--temperature T] [--top_p P] [--top_k K] [--seed N] [--num_ctx N] [--num_predict N] [--verbose]
+    [--frames START-END | --restart] [--temperature T] [--top_p P] [--top_k K] [--presence_penalty X] [--seed N] \
+    [--num_ctx N] [--num_predict N] [--retries N] [--verbose]
 ```
 
 - `--frames` takes `START-END`, `START-` or `-END` (1-based, inclusive).
 - `--restart` resumes an interrupted run: it appends to `--output`, starting after the highest frame number in it and continuing bbox ids. It cannot be combined with `--frames`.
-- Without `--temperature`/`--top_p`/`--top_k`/`--seed`, the model's own defaults from the server are used (deliberately).
+- Without `--temperature`/`--top_p`/`--top_k`/`--presence_penalty`/`--seed`, the model's own defaults from the server are used (deliberately).
 
 ## Architecture
 
@@ -32,8 +33,8 @@ Pipeline: classes file → prompt + JSON schema → Ollama → parse response �
   - `get_prompt()` lists the class prompts in `prompt_order` and asks for `{"objects": [{"label", "bbox_2d"}]}`.
   - `get_format()` builds the matching JSON schema for Ollama's `format` parameter, with `label` restricted (enum) to the exact prompt strings. The prompt and schema must stay consistent.
   - `parse_model_response()` accepts the `{"objects": [...]}` object or a raw list (also strips ```json fences), maps labels back to classes with `label_classes.get_entry_from_prompt()` (exact match, else unique prefix), and converts `bbox_2d` from Qwen's 0–1000 grid to pixels. It returns `[]` for no detections and `None` if the response can't be fully parsed (any item dropped → whole frame counted as unparsed).
-- **Model gating:** both scripts only call the parser when `model == "qwen3-vl:8b"`; any other model silently yields no bboxes.
-- **`process_video.py`** decodes frames with OpenCV, writes each to a temporary PNG for Ollama, and appends each frame's bboxes to the output file as it goes (flushed per frame so a crash loses at most the current frame). It exits if a response's `done_reason` isn't `stop`. It prints average Ollama timing stats, elapsed time and the unparsed-frame rate at the end. Frame timestamps (`fts`) are currently a stub (`0.0`).
+- **Model gating:** both scripts only call the parser when `model.startswith("qwen3-vl")`; any other model silently yields no bboxes.
+- **`process_video.py`** decodes frames with OpenCV, writes each to a temporary PNG for Ollama, and appends each frame's bboxes to the output file as it goes (flushed per frame so a crash loses at most the current frame). `generate` is called with `think=False`. The model sometimes loops until it hits the token limit (`done_reason=length`, empty `response`); such frames are retried up to `--retries` times (with `--seed S`, retry n uses seed `S+n`), then skipped and listed as failed in the summary. `--restart` does not redo skipped frames. Any other non-`stop` reason exits. It prints average Ollama timing stats, elapsed time and the unparsed-frame rate at the end. Frame timestamps (`fts`) are currently a stub (`0.0`).
 - **`process_image.py`** uses `client.chat` without a schema or model options, and writes with `bbox_io.write()`.
 
 ### bbox file format (`bbox_io.py`)
